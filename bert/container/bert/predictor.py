@@ -26,11 +26,26 @@ PATH = Path(os.path.join(prefix, "model"))
 PRETRAINED_PATH = Path(os.path.join(prefix, "code"))
 
 BERT_PRETRAINED_PATH = (
-    PRETRAINED_PATH / "pretrained-weights" / "uncased_L-12_H-768_A-12/"
+        PRETRAINED_PATH / "pretrained-weights" / "uncased_L-12_H-768_A-12/"
 )
 MODEL_PATH = PATH / "pytorch_model.bin"
 
+threshold_config = {
+    "abusive": 0.2,
+    "sharing_contact_details": 0.5,
+    "offline_sell": 0.25,
+    "asking_exchange": 0.6,
+    "possible_fraud": 0.15
+}
+
+
 # request_text = None
+def has_mobile(current_sentence):
+    has_mobile = re.search(r'(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[789]\d{9}', current_sentence)
+    if (has_mobile):
+        return ' number'
+    else:
+        return ''
 
 
 class ScoringService(object):
@@ -92,11 +107,23 @@ def ping():
     """Determine if the container is working and healthy. In this sample container, we declare
     it healthy if we can load the model successfully."""
     health = (
-        ScoringService.get_predictor_model() is not None
+            ScoringService.get_predictor_model() is not None
     )  # You can insert a health check here
 
     status = 200 if health else 404
     return flask.Response(response="\n", status=status, mimetype="application/json")
+
+
+# @app.route("/execution-parameters", method=["GET"])
+# def get_execution_parameters():
+#     params = {
+#         "MaxConcurrentTransforms": 3,
+#         "BatchStrategy": "MULTI_RECORD",
+#         "MaxPayloadInMB": 6,
+#     }
+#     return flask.Response(
+#         response=json.dumps(params), status="200", mimetype="application/json"
+#     )
 
 
 @app.route("/invocations", methods=["POST"])
@@ -107,12 +134,13 @@ def transformation():
     """
     data = None
     text = None
+    is_spam = False
 
     if flask.request.content_type == "application/json":
         print("calling json launched")
         data = flask.request.get_json(silent=True)
 
-        text = data["text"]
+        text = data["input"]
         try:
             bing_key = data["bing_key"]
         except:
@@ -128,8 +156,19 @@ def transformation():
     print("Invoked with text: {}.".format(text.encode("utf-8")))
 
     # Do the prediction
+    text += has_mobile(text)
     predictions = ScoringService.predict(text, bing_key)
 
-    result = json.dumps(predictions[:10])
+    response = {}
+    for i in range(0, 6):
+        response[predictions[i][0]] = predictions[i][1]
+
+    for key, value in threshold_config.items():
+        if response[key] > threshold_config[key]:
+            is_spam = True
+
+    final_response = {"is_spam": is_spam,
+                      "tags": response}
+    result = json.dumps(final_response)
 
     return flask.Response(response=result, status=200, mimetype="application/json")

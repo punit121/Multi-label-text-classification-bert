@@ -45,6 +45,7 @@ finetuned_path = input_path + '/{}/finetuned'.format(
     channel_name
 )  # opt/ml/input/data/training/finetuned
 
+
 output_path = os.path.join(prefix, 'output')  # opt/ml/output
 model_path = os.path.join(prefix, 'model')  # opt/ml/model
 
